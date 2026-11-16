@@ -1,0 +1,15 @@
+services:
+  app:
+    build: .
+    ports: ["18213:8000"]
+    environment:
+      DB_PATH: /data/grantalloc.db
+      RULE_VERSION: "2026.11"
+    volumes: ["app-data:/data"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+volumes:
+  app-data:
