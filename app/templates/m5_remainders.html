@@ -1,4 +1,48 @@
 {% extends "base.html" %}{% block content %}
 <div class="grid module-5"><section class="panel panel--primary"><div class="panel__head"><h2>尾差裁决记录</h2><span class="panel__meta">M5 · {{ data.status|default('READY') }}</span></div><div class="panel__body panel__body--scroll"><table class="ledger"><thead><tr><th>字段</th><th>值</th><th>证据</th></tr></thead><tbody>{% for key, value in data.items() %}<tr><td>{{ key }}</td><td class="num">{{ value }}</td><td>R{{ loop.index }}</td></tr>{% endfor %}</tbody></table></div></section>
 <div class="stack"><section class="panel"><div class="panel__head"><h2>原因码</h2><span class="panel__meta">{{ data.reason|default('OK') }}</span></div><div class="panel__body bars"><i style="--v:65%"></i><i style="--v:50%"></i></div></section><section class="panel"><div class="panel__head"><h2>本次动作</h2><span class="panel__meta">/api/remainders/resolve</span></div><div class="panel__body"><button class="btn btn--primary" data-endpoint="/api/remainders/resolve">运行 尾差裁决</button><pre class="result">等待运行</pre></div></section></div></div>
+
+<div class="grid">
+<section class="panel panel--primary"><div class="panel__head"><h2>资金池结批</h2><span class="panel__meta">按池结批 · 过期版本拒绝</span></div><div class="panel__body">
+<form class="form" id="settle-form">
+<label>资金池<input name="pool_id" value="{{ settle_sample.pool_id }}"></label>
+<label>批次号（留空按输入派生，重试不重复扣补）<input name="batch_id" placeholder="batch-…"></label>
+<label>本批总额<input name="total" value="{{ settle_sample.total }}"></label>
+<label>账本版本（留空取当前版本）<input name="expected_version" placeholder="{% if pools %}{{ pools[0].version }}{% else %}0{% endif %}"></label>
+<label>项目清单（JSON：id / weight / cap）<textarea name="items_json" rows="7">{{ settle_sample.items_json }}</textarea></label>
+<button class="btn btn--primary" type="submit">结批</button>
+<pre class="result" id="settle-out">等待结批</pre>
+</form>
+{% if recovered %}<p class="hint">已恢复中断批次 {{ recovered|length }} 个：{% for r in recovered %}{{ r.batch_id }}→{{ r.status }} {% endfor %}</p>{% endif %}
+</div></section>
+<div class="stack">
+<section class="panel"><div class="panel__head"><h2>欠分账本</h2><span class="panel__meta">按资金池隔离 · 欠多者优先轮补</span></div><div class="panel__body panel__body--scroll"><table class="ledger"><thead><tr><th>资金池</th><th>项目</th><th>累计欠分</th></tr></thead><tbody>{% for row in ledger %}<tr><td>{{ row.pool_id }}</td><td>{{ row.project_id }}</td><td class="num">{{ row.owed }}</td></tr>{% endfor %}{% if not ledger %}<tr><td colspan="3">暂无欠分记录</td></tr>{% endif %}</tbody></table></div></section>
+<section class="panel"><div class="panel__head"><h2>资金池版本</h2><span class="panel__meta">结批乐观锁</span></div><div class="panel__body panel__body--scroll"><table class="ledger"><thead><tr><th>资金池</th><th>当前版本</th></tr></thead><tbody>{% for p in pools %}<tr><td>{{ p.pool_id }}</td><td class="num">v{{ p.version }}</td></tr>{% endfor %}{% if not pools %}<tr><td colspan="2">尚未结批</td></tr>{% endif %}</tbody></table></div></section>
+</div></div>
+
+<section class="panel"><div class="panel__head"><h2>批次与补分依据</h2><span class="panel__meta">已结批次按当时依据复算 · 不回改</span></div><div class="panel__body panel__body--scroll">
+<table class="ledger"><thead><tr><th>批次</th><th>资金池</th><th>状态</th><th>版本</th><th>分配合计</th><th>未分配</th><th>原因</th><th>复算</th></tr></thead><tbody>
+{% for b in batches %}<tr><td>{{ b.batch_id }}</td><td>{{ b.pool_id }}</td><td>{{ b.status }}</td><td class="num">v{{ b.expected_version }}{% if b.version is not none %}→v{{ b.version }}{% endif %}</td><td class="num">{{ b.allocated_total or '—' }}</td><td class="num">{{ b.unallocated or '—' }}</td><td>{{ b.reason or '—' }}</td><td>{% if b.status == 'SETTLED' %}<button class="btn" data-verify="{{ b.batch_id }}">复算</button>{% endif %}</td></tr>
+{% if b.rationale %}<tr><td colspan="8"><table class="ledger"><thead><tr><th>补分序</th><th>项目</th><th>本批尾差</th><th>欠分(批前)</th><th>实补</th><th>封顶余量</th><th>结论</th></tr></thead><tbody>{% for r in b.rationale %}<tr><td class="num">{{ r.rank }}</td><td>{{ r.project_id }}</td><td class="num">{{ r.frac }}</td><td class="num">{{ r.owed_before }}</td><td class="num">{{ r.grant }}</td><td class="num">{{ r.room }}</td><td>{{ r.note }}</td></tr>{% endfor %}</tbody></table></td></tr>{% endif %}
+{% endfor %}{% if not batches %}<tr><td colspan="8">暂无批次</td></tr>{% endif %}
+</tbody></table>
+<pre class="result" id="verify-out">复算结果</pre>
+</div></section>
+
+<script>
+document.getElementById("settle-form")?.addEventListener("submit",async(e)=>{
+  e.preventDefault();const f=e.target,out=document.getElementById("settle-out");let items;
+  try{items=JSON.parse(f.items_json.value)}catch{out.textContent="项目清单 JSON 无法解析";return}
+  const payload={pool_id:f.pool_id.value,total:f.total.value,items};
+  if(f.batch_id.value.trim())payload.batch_id=f.batch_id.value.trim();
+  if(f.expected_version.value.trim()!=="")payload.expected_version=Number(f.expected_version.value);
+  out.textContent="结批中";
+  try{const res=await fetch("/api/remainders/settle",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});
+  out.textContent=await res.text();if(res.ok)setTimeout(()=>location.reload(),900)}catch(err){out.textContent="请求失败，请重试"}
+});
+document.querySelectorAll("[data-verify]").forEach(btn=>btn.addEventListener("click",async()=>{
+  const out=document.getElementById("verify-out");out.textContent="复算中";
+  try{const res=await fetch(`/api/remainders/batches/${encodeURIComponent(btn.dataset.verify)}/verify`,{method:"POST"});out.textContent=await res.text()}catch(e){out.textContent="请求失败，请重试"}
+}));
+</script>
 {% endblock %}

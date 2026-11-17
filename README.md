@@ -8,12 +8,14 @@
 - M2 资格校验：`/api/eligibility/evaluate`
 - M3 权重测算：`/api/weights/calculate`
 - M4 金额分摊：`/api/allocations/calculate`
-- M5 尾差裁决：`/api/remainders/resolve`
+- M5 尾差裁决：`/api/remainders/resolve`、`/api/remainders/settle`
 - M6 批次复核：`/api/export/allocations.csv`
 
         ## 核心规则
 
         先迭代封顶再按有效权重分配，最后用最大余额法落到分；输入顺序变化不得改变结果。
+        尾差相同按资金池累计欠分轮补（欠多者优先）；欠分按池隔离滚动，已结批次冻结不回改，
+        历史误差由后续批次补偿承接；结批校验账本版本，中断可恢复，重试不重复扣补。
 
         ## 启动
 

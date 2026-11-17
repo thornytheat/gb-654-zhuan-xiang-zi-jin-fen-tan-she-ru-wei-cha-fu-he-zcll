@@ -8,5 +8,9 @@
 | `raw_value` | string | 是 | 未归一的原始证据 |
 | `normalized_value` | string | 是 | 按项目规则得到的值 |
 | `rule_version` | string | 否 | 计算规则版本 |
+| `pool_id` | string | 否 | 资金池编号，欠分账本的隔离维度 |
+| `batch_id` | string | 否 | 结批幂等键，缺省按输入摘要派生 |
+| `expected_version` | integer | 否 | 结批所依据的资金池账本版本，不符即拒绝 |
+| `owed` | decimal | 否 | 项目在某资金池的累计欠分（元），可负 |
 
 字符串编号逐字保留。金额与计量值用 `Decimal`。时间值带偏移并以 UTC 参与比较。区间统一采用左闭右开。
